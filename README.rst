@@ -4,7 +4,7 @@
 
 The aim of SimpleRST is to convert manual Python code and documentations to a restructured text frame.
 It parses the code using Python's built-in module `ast` in order to extract the classes, function signatures and documentation from code, then place them into an RST-formatted frame. You can use a custom regex to extract the specific
-information from your documentaion and put it in an RST document (which depends on your documentation format). Following is a
+information from your documentation and put it in an RST document (which depends on your documentation format). Following is a
 sample documentation and relative regex with an rst formatted doc:
 
 
@@ -33,7 +33,7 @@ Relative regex:
         name, types, describe = match_obj.group(1, 2, 3)
 
 
-Output in RST formatt
+Output in RST format:
 
 .. code-block:: python
   
