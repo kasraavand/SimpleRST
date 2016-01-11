@@ -199,5 +199,5 @@ class Parser(object):
 
 
 if __name__ == "__main__":
-	Pars = Parser(file_name='/home/kasra/IBSng/core/lib/testtt.py')
+	Pars = Parser(file_name='The_relative_path')
 	Pars.replacer()
