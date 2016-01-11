@@ -35,7 +35,6 @@ Relative regex:
 
 Output in RST foramt
 
-"""
 .. code-block:: python
   
   """
