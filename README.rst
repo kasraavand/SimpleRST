@@ -36,20 +36,23 @@ Relative regex:
 Output in RST foramt
 
 """
-.. py:attribute:: delUser(['self', 'user_ids', 'comment', 'del_connections', 'del_audit_logs', 'admin_name', 'remote_address'])
+.. code-block:: python
+  
+  """
+  .. py:attribute:: delUser(['self', 'user_ids', 'comment', 'del_connections', 'del_audit_logs', 'admin_name', 'remote_address'])
 
-   delete users with ids in user_ids
+     delete users with ids in user_ids
 
-   :param user_ids:  List of user ids
-   :type user_ids: list of int
-   :param comment:  comment when deleting users
-   :type comment: str
-   :param del_connection:  tells if we should delete user(s) connection logs too
-   :type del_connection: bool
-   :param del_audit_logs:  tells if we should delete user(s) audit logs too
+     :param user_ids:  List of user ids
+     :type user_ids: list of int
+     :param comment:  comment when deleting users
+     :type comment: str
+     :param del_connection:  tells if we should delete user(s) connection logs too
+     :type del_connection: bool
+     :param del_audit_logs:  tells if we should delete user(s) audit logs too
 
-   :type del_audit_logs: bool
-   :param admin_name:  username of admin that deleted the users
-   :type admin_name: str
-   :rtype: list of string
-"""
+     :type del_audit_logs: bool
+     :param admin_name:  username of admin that deleted the users
+     :type admin_name: str
+     :rtype: list of string
+  """
