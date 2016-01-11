@@ -2,10 +2,10 @@
  Usage
 ==========
 
-The aim of this SimpleRST is converting the manual python code, documentations to a restructured text farame.
-It parses the code using python built-in module `ast` in order to extracts the classes and functions signature and documentation from code. Then puts them in a RST formated frame. You can use a custome regex to extract the specific
-information from your ducumentaion, and put in RST doc. Which it depends on your documentaion format. Following is a
-sample ducumentaion and relative regex with rst formatted doc:
+The aim of SimpleRST is to convert manual Python code and documentations to a restructured text frame.
+It parses the code using Python's built-in module `ast` in order to extract the classes, function signatures and documentation from code, then place them into an RST-formatted frame. You can use a custom regex to extract the specific
+information from your documentaion and put it in an RST document (which depends on your documentation format). Following is a
+sample documentation and relative regex with an rst formatted doc:
 
 
 .. code-block:: python
@@ -33,7 +33,7 @@ Relative regex:
         name, types, describe = match_obj.group(1, 2, 3)
 
 
-Output in RST foramt
+Output in RST formatt
 
 .. code-block:: python
   
