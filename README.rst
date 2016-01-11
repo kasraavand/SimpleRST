@@ -34,6 +34,7 @@ Relative regex:
 
 Output in RST foramt :
 
+================
 .. py:attribute:: delUser(['self', 'user_ids', 'comment', 'del_connections', 'del_audit_logs', 'admin_name', 'remote_address'])
 
    Format the exception with a traceback.
