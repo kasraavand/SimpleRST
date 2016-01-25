@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 import shutil
 
 class Parser(object):
-	def __init__(self, *args, **kwargs):
+	def __init__(self, *args, **kwargs):p
 		self.file_name = kwargs['file_name']
 		self.file_contents = self.source_reader()
 		self.module = self.create_parser_obj() 
@@ -184,7 +184,6 @@ class Parser(object):
 				elif initial:
 					if flag and line.strip() not in pre_doc_lines and line.strip() != '"""':
 						tempfile.write(line)
-						print line,'**',doc_lines
 					else:
 						if line.strip() != '"""':
 							pass
