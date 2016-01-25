@@ -67,7 +67,6 @@ class Parser(object):
 					indices = [0]+indices
 
 				parts_ = ['\n'.join(doc_lines[i:j]) for i, j in zip(indices, indices[1:]+[None])]
-
 				for part in parts_:
 					match_obj = regex.match(part)
 					if match_obj:
@@ -76,9 +75,9 @@ class Parser(object):
 							{'name': name,'types': types,'describe': describe}
 							)
 					else:
-						parsed_docstring["explain"].__add__('\n'+part)
+						parsed_docstring["explain"] += '\n'+part
 
-				yield parsed_docstring
+				yield doc_lines, parsed_docstring
 			else:
 				parsed_docstring['explain'] = ''
 				if parsed_docstring['type'] in {'function', 'attribute'}:
@@ -89,12 +88,12 @@ class Parser(object):
 				else:
 					parsed_docstring['arguments'] =[{'name': '','types': '','describe': ''}]
 				parsed_docstring['doc_length'] = 0
-				yield parsed_docstring
+				yield '', parsed_docstring
 				
 
 	def create_rst(self):
 		parsed_docstring = self.parse_doc()
-		for doc in parsed_docstring:
+		for doc_lines, doc in parsed_docstring:
 			name, lineno, type_, explain, arguments, doc_length= itemgetter(
 				'name',
 				'lineno',
@@ -152,13 +151,13 @@ class Parser(object):
 					'example': '',
 					'todo': ''
 					})
-			yield lineno+1, FULL_RST, doc_length
+			yield lineno+1, FULL_RST, doc_length, doc_lines
 
 	def replacer(self, flag=False, initial=False):
 		tempfile = NamedTemporaryFile(delete=False)
 		with open(self.file_name.split('.')[0]+'.rst', 'w') as rst,open(self.file_name) as py:
 			rst_iterator = self.create_rst()
-			lineno, FULL_RST, doc_length = next(rst_iterator)
+			lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
 			pre_lineno = lineno
 			rst.write(FULL_RST)
 			for index,line in enumerate(py,1):
@@ -175,15 +174,17 @@ class Parser(object):
 							tempfile.write('\t"""\n'+FULL_RST+'\t"""\n')
 							flag = False
 						try:
-							lineno, FULL_RST, doc_length = next(rst_iterator)
+							pre_doc_lines = doc_lines
+							lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
 							rst.write(FULL_RST)
 						except StopIteration:
 							pass
 						initial = True
 
 				elif initial:
-					if flag:
+					if flag and line.strip() not in pre_doc_lines and line.strip() != '"""':
 						tempfile.write(line)
+						print line,'**',doc_lines
 					else:
 						if line.strip() != '"""':
 							pass
@@ -199,5 +200,5 @@ class Parser(object):
 
 
 if __name__ == "__main__":
-	Pars = Parser(file_name='The_relative_path')
+	Pars = Parser(file_name='the_relative_path')
 	Pars.replacer()
