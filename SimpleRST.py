@@ -312,6 +312,7 @@ Example
                             tempfile.write(whitespace+'"""\n'+FULL_RST+whitespace+'"""\n')
                             flag = True
                         else :
+                            tempfile.write(line)
                             tempfile.write(whitespace+'"""\n'+FULL_RST+whitespace+'"""\n')
                             flag = False
                         try:
