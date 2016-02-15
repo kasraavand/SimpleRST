@@ -26,8 +26,7 @@ class Parser(object):
 
             Constructor of Parser objects
 
-           :param file_name: Th
-           e name of input file
+           :param file_name: The name of target file
            :type file_name: string
            :param file_contents: The content of input file
            :type file_contents: string
@@ -107,16 +106,16 @@ class Parser(object):
 
     def parse_doc(self):
         """
-.. py:attribute:: parse_doc()
+        .. py:attribute:: parse_doc()
 
 
-   :param self:
-   :type self:
-   :rtype: UNKNOWN
+           :param self:
+           :type self:
+           :rtype: UNKNOWN
 
-.. note::
+        .. note::
 
-.. todo::
+        .. todo::
         """
         objects_info = self.extract_info()
         regex = re.compile(r'^\s*([^:]*)\(([^)]*)\):(.*)$', re.DOTALL)
@@ -156,20 +155,16 @@ class Parser(object):
 
     def create_rst(self):
         """
-.. py:attribute:: create_rst()
+        .. py:attribute:: create_rst()
 
 
-   :param self:
-   :type self:
-   :rtype: UNKNOWN
+           :param self:
+           :type self:
+           :rtype: UNKNOWN
 
-.. note::
+        .. note::
 
-Example
-
-.. code-block:: python
-
-.. todo::
+        .. todo::
         """
         parsed_docstring = self.parse_doc()
         for doc_lines, doc in parsed_docstring:
@@ -229,22 +224,18 @@ Example
                     'todo': ''})
             yield lineno + 1, FULL_RST, doc_length, doc_lines
 
-    def replacer(self, flag=False, initial=False):
+    def replacer(self, doc_flag=False, initial=False, whitespace=None):
         """
         .. py:attribute:: replacer()
+            Replace the existing document (if it exist) or adding new document (if it hasn't doc)  
 
-
-           :param flag: A boolean value for controlling the different states
-           :type flag: boolean
+           :param doc_flag: A boolean value for controlling the different states
+           :type doc_flag: boolean
            :param initial: A boolean value for controlling the different states
            :type initial: boolean
            :rtype: None
 
         .. note::
-
-        Example
-
-        .. code-block:: python
 
         .. todo::
         """
@@ -254,52 +245,74 @@ Example
             lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
             rst.write(FULL_RST)
             for index, line in enumerate(py, 1):
+                # If we encounter a class, function or attribute header
                 if index == lineno:
-                    if line.strip().endswith(':') and line.count('(') != line.count(')'):
-                        lineno += 1
-                        tempfile.write(line)
-                        continue
-                    else:
+                    if not whitespace:
                         whitespace = self.whitespace_regex.search(line).group(1)
+                    # If object header got finished in this line (existence of `:` at the end of line) 
+                    if line.strip().endswith(':'):
+                        tempfile.write(line)
+                        # Preparing the leading whitespace
                         if '\t' in whitespace:
                             whitespace += "\t"
                         else:
                             whitespace += "    "
+                        # If the object hasn't any doc by itself we write the FULL_RST and make the
+                        # doc_flag True in order to be use in next steps
                         if doc_length == 0:
-                            tempfile.write(line)
                             tempfile.write(
                                 ''.join([
                                     whitespace,
                                     '"""\n',
                                     '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
                                     '"""\n']))
-                            flag = True
+                            doc_flag = True
+
                         else:
-                            tempfile.write(line)
+                            # If object has doc write the FULL_RST and make the doc_flag False
                             tempfile.write(
                                 ''.join([
                                     whitespace,
                                     '"""\n',
                                     '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
                                     '"""\n']))
-                            flag = False
+                            doc_flag = False
+
+                        # clear the previous white space in order to be reconstruct for next objects.  
+                        whitespace = None
+
                         try:
+                            # Preserve the documentation and iterate over rst_iterator
                             pre_doc_lines = doc_lines
                             lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
                             rst.write(FULL_RST)
                         except StopIteration:
                             pass
+                        # making initial True means we have written the documentation
                         initial = True
-                elif initial:
-                    if flag and line.strip() not in pre_doc_lines and line.strip() != '"""':
-                        tempfile.write(line)
+                    # If we encounter a object and the line doesn't end with `:` means that header
+                    # has been too long and has been divided to multiple parts.
                     else:
-                        if line.strip() != '"""':
-                            pass
-                        else:
-                            flag = True
+                        tempfile.write(line)
+                        lineno += 1
+                # If the index != lineno and initial be True means that we have written the doc and still
+                # we are in object body.
+                elif initial:
+                    stripp_line = line.strip()
+                    # If doc_flag be True means that object hasn't doc so we can write the next lines incautious.
+                    if doc_flag:
+                        tempfile.write(line)
+                        initial = False
+                    # otherwise if the line is a whitespace we write it.
+                    elif not stripp_line:
+                        tempfile.write(line)
+                    # Else if line in not in previous doc lines we we write it
+                    elif stripp_line not in map(str.strip, pre_doc_lines + ['"""']):
+                        tempfile.write(line)
+                # If line is not a the header of an object and initial is not True we just write the line.
                 else:
                     tempfile.write(line)
+            # Replace the temporary file with target file.
             shutil.move(tempfile.name, self.file_name)
 
 
