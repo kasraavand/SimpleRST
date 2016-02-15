@@ -93,7 +93,7 @@ class Parser(object):
                             "lineno": sub_node.lineno - 1,
                             "docstring": ast.get_docstring(sub_node),
                             "type": 'attribute',
-                            "args": [arg.id for arg in sub_node.args.args],
+                            "args": [arg.id for arg in sub_node.args.args if arg.id != 'self'],
                             "header": ''}
             elif isinstance(node, ast.FunctionDef):
                 yield {
