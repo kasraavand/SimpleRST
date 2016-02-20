@@ -2,10 +2,12 @@ import ast
 import re
 from operator import itemgetter
 from tempfile import NamedTemporaryFile
+from collections import deque
+from itertools import tee, izip_longest
 import shutil
 
 
-class Parser(object):
+class Parser:
     """
     ==============
 
@@ -51,8 +53,28 @@ class Parser(object):
            :rtype: string
 
         """
-        with open(self.file_name) as fd:
-            return fd.read()
+        with open(self.file_name) as f:
+            return f.read()
+
+    def source_reader_filtered(self):
+        """
+        .. py:attribute:: source_reader_filtered()
+
+            Read the content of input file by ignoring the escaped new line characters.
+           :rtype: string
+
+        """
+        with open(self.file_name) as f:
+            stack = deque()
+            ne, f = tee(f)
+            next(ne)
+            for line, next_line in izip_longest(f, ne):
+                line = line.rstrip()
+                if line.endswith('\\'):
+                    stack.append(line.strip('\\'))
+                else:
+                    yield ''.join(stack) + line + '\n'
+                    stack.clear()
 
     def create_parser_obj(self):
         """
@@ -240,7 +262,8 @@ class Parser(object):
         .. todo::
         """
         tempfile = NamedTemporaryFile(delete=False)
-        with open(self.file_name.split('.')[0] + '.rst', 'w') as rst, open(self.file_name) as py:
+        with open(self.file_name.split('.')[0] + '.rst', 'w') as rst:
+            py = self.source_reader_filtered()
             rst_iterator = self.create_rst()
             lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
             rst.write(FULL_RST)
