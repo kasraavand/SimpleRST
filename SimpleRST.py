@@ -40,21 +40,10 @@ class Parser:
            :rtype: None
         """
         self.file_name = kwargs['file_name']
-        self.file_contents = self.source_reader()
+        self.file_contents = ''.join(self.source_reader_filtered())  # self.source_reader()
         self.module = self.create_parser_obj()
         self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
         self.whitespace_regex = re.compile(r"^(\s*).*")
-
-    def source_reader(self):
-        """
-        .. py:attribute:: source_reader()
-
-            Read the content of input file.
-           :rtype: string
-
-        """
-        with open(self.file_name) as f:
-            return f.read()
 
     def source_reader_filtered(self):
         """
@@ -173,7 +162,7 @@ class Parser:
                 else:
                     parsed_docstring['arguments'] = [{'name': '', 'types': '', 'describe': ''}]
                 parsed_docstring['doc_length'] = 0
-                yield '', parsed_docstring
+                yield [], parsed_docstring
 
     def create_rst(self):
         """
@@ -269,11 +258,12 @@ class Parser:
             rst.write(FULL_RST)
             for index, line in enumerate(py, 1):
                 # If we encounter a class, function or attribute header
+                strip_line = line.strip()
                 if index == lineno:
                     if not whitespace:
                         whitespace = self.whitespace_regex.search(line).group(1)
-                    # If object header got finished in this line (existence of `:` at the end of line) 
-                    if line.strip().endswith(':'):
+                    # If object header got finished in this line (existence of `:` at the end of line)
+                    if strip_line.endswith(':'):
                         tempfile.write(line)
                         # Preparing the leading whitespace
                         if '\t' in whitespace:
@@ -301,9 +291,10 @@ class Parser:
                                     '"""\n']))
                             doc_flag = False
 
-                        # clear the previous white space in order to be reconstruct for next objects.  
+                        # clear the previous white space in order to be reconstruct for next objects.
                         whitespace = None
-
+                        # making initial True means we have written the documentation
+                        initial = True
                         try:
                             # Preserve the documentation and iterate over rst_iterator
                             pre_doc_lines = doc_lines
@@ -311,13 +302,14 @@ class Parser:
                             rst.write(FULL_RST)
                         except StopIteration:
                             pass
-                        # making initial True means we have written the documentation
-                        initial = True
-                    # If we encounter a object and the line doesn't end with `:` means that header
-                    # has been too long and has been divided to multiple parts.
+                    elif line.count('(') != line.count(')'):
+                            # If we encounter a line and the line doesn't end with `:` means that header
+                            # has been too long and has been divided to multiple parts.
+                            tempfile.write(line)
+                            lineno += 1
                     else:
                         tempfile.write(line)
-                        lineno += 1
+
                 # If the index != lineno and initial be True means that we have written the doc and still
                 # we are in object body.
                 elif initial:
