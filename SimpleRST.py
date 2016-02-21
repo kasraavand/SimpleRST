@@ -332,5 +332,5 @@ class Parser:
 
 
 if __name__ == "__main__":
-    Pars = Parser(file_name='/home/kasra/IBSng/core/user/user_actions.py')
+    Pars = Parser(file_name='')
     Pars.replacer()
