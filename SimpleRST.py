@@ -399,7 +399,10 @@ class Manager(Parser):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Process log files based on your filter")
+        description="""Create RST doc for functions and classes from current doc and
+        for no documented ones. In addition SimpleRST lets you create new document based
+        on a manual pattern.
+        """)
     parser.add_argument("-d",
                         "-directory",
                         help="Apply the code on all the files and sub-directories within given path")
