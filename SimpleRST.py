@@ -1,10 +1,12 @@
 import ast
 import re
-from operator import itemgetter
+from operator import itemgetter, attrgetter
 from tempfile import NamedTemporaryFile
 from collections import deque
 from itertools import tee, izip_longest
 import shutil
+import argparse
+import os
 
 
 class Parser:
@@ -22,30 +24,15 @@ class Parser:
       documentation in form of RST formatting.
 
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         """
         .. py:attribute:: __init__()
 
             Constructor of Parser objects
-
-           :param file_name: The name of target file
-           :type file_name: string
-           :param file_contents: The content of input file
-           :type file_contents: string
-           :param param_format: A raw frame of parameter line in RST formatting
-           :type param_format: string
-           :param whitespace_regex: A regex for extracting the leading
-            whitespace from code lines
-           :type: regex object
            :rtype: None
         """
-        self.file_name = kwargs['file_name']
-        self.file_contents = ''.join(self.source_reader_filtered())  # self.source_reader()
-        self.module = self.create_parser_obj()
-        self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
-        self.whitespace_regex = re.compile(r"^(\s*).*")
 
-    def source_reader_filtered(self):
+    def source_reader_filtered(self, file_name):
         """
         .. py:attribute:: source_reader_filtered()
 
@@ -53,7 +40,7 @@ class Parser:
            :rtype: string
 
         """
-        with open(self.file_name) as f:
+        with open(file_name) as f:
             stack = deque()
             ne, f = tee(f)
             next(ne)
@@ -65,7 +52,7 @@ class Parser:
                     yield ''.join(stack) + line + '\n'
                     stack.clear()
 
-    def create_parser_obj(self):
+    def create_parser_obj(self, file_contents):
         """
         .. py:attribute:: create_parser_obj()
 
@@ -75,9 +62,9 @@ class Parser:
            :rtype: `ast.parser` object
 
         """
-        return ast.parse(self.file_contents)
+        return ast.parse(file_contents)
 
-    def extract_info(self):
+    def extract_info(self, module):
         """
         .. py:attribute:: extract_info()
 
@@ -90,32 +77,38 @@ class Parser:
         .. note::
 
         """
-        for node in self.module.body:
-            if isinstance(node, ast.ClassDef):
-                yield {
-                    "name": node.name,
-                    "lineno": node.lineno - 1,
-                    "docstring": ast.get_docstring(node),
-                    "type": 'class'}
-                for sub_node in node.body:
-                    if isinstance(sub_node, ast.FunctionDef):
-                        yield {
-                            "name": sub_node.name,
-                            "lineno": sub_node.lineno - 1,
-                            "docstring": ast.get_docstring(sub_node),
-                            "type": 'attribute',
-                            "args": [arg.id for arg in sub_node.args.args if arg.id != 'self'],
-                            "header": ''}
-            elif isinstance(node, ast.FunctionDef):
-                yield {
-                    "name": node.name,
-                    "lineno": node.lineno - 1,
-                    "docstring": ast.get_docstring(node),
-                    "type": 'function',
-                    "args": [arg.id for arg in node.args.args]}
+        def extracter(root_nod):
+            for node in root_nod.body:
+                if isinstance(node, ast.ClassDef):
+                    yield {
+                        "name": node.name,
+                        "lineno": node.lineno - 1,
+                        "docstring": ast.get_docstring(node),
+                        "type": 'class'}
+                    for sub_node in node.body:
+                        if isinstance(sub_node, ast.FunctionDef):
+                            yield {
+                                "name": sub_node.name,
+                                "lineno": sub_node.lineno - 1,
+                                "docstring": ast.get_docstring(sub_node),
+                                "type": 'attribute',
+                                "args": [arg.id for arg in sub_node.args.args if arg.id != 'self'],
+                                "header": ''}
+                            for n in extracter(sub_node):
+                                yield n
+                elif isinstance(node, ast.FunctionDef):
+                    yield {
+                        "name": node.name,
+                        "lineno": node.lineno - 1,
+                        "docstring": ast.get_docstring(node),
+                        "type": 'function',
+                        "args": [arg.id for arg in node.args.args]}
+                    for n in extracter(node):
+                        yield n
+        return extracter(module)
 
 
-    def parse_doc(self):
+    def parse_doc(self, module):
         """
         .. py:attribute:: parse_doc()
 
@@ -128,7 +121,7 @@ class Parser:
 
         .. todo::
         """
-        objects_info = self.extract_info()
+        objects_info = self.extract_info(module)
         regex = re.compile(r'^\s*([^:]*)\(([^)]*)\):(.*)$', re.DOTALL)
         for parsed_docstring in objects_info:
             doc = parsed_docstring.pop('docstring')
@@ -164,7 +157,7 @@ class Parser:
                 parsed_docstring['doc_length'] = 0
                 yield [], parsed_docstring
 
-    def create_rst(self):
+    def create_rst(self, module, file_name):
         """
         .. py:attribute:: create_rst()
 
@@ -177,7 +170,7 @@ class Parser:
 
         .. todo::
         """
-        parsed_docstring = self.parse_doc()
+        parsed_docstring = self.parse_doc(module)
         for doc_lines, doc in parsed_docstring:
             name, lineno, type_, explain, arguments, doc_length = itemgetter(
                 'name',
@@ -198,7 +191,7 @@ class Parser:
                     'type': type_,
                     'explain': explain,
                     'params': params,
-                    'file_name': self.file_name,
+                    'file_name': file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
@@ -213,7 +206,7 @@ class Parser:
                     'explain': explain,
                     'params': params,
                     'args': '',
-                    'file_name': self.file_name,
+                    'file_name': file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
@@ -228,17 +221,17 @@ class Parser:
                     'explain': explain,
                     'params': params,
                     'args': '',
-                    'file_name': self.file_name,
+                    'file_name': file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
                     'todo': ''})
             yield lineno + 1, FULL_RST, doc_length, doc_lines
 
-    def replacer(self, doc_flag=False, initial=False, whitespace=None):
+    def replacer(self, module, file_name, file_iter, doc_flag=False, initial=False, whitespace=None):
         """
         .. py:attribute:: replacer()
-            Replace the existing document (if it exist) or adding new document (if it hasn't doc)  
+            Replace the existing document (if it exist) or adding new document (if it hasn't doc)
 
            :param doc_flag: A boolean value for controlling the different states
            :type doc_flag: boolean
@@ -251,86 +244,168 @@ class Parser:
         .. todo::
         """
         tempfile = NamedTemporaryFile(delete=False)
-        with open(self.file_name.split('.')[0] + '.rst', 'w') as rst:
-            py = self.source_reader_filtered()
-            rst_iterator = self.create_rst()
-            lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
-            rst.write(FULL_RST)
-            for index, line in enumerate(py, 1):
-                # If we encounter a class, function or attribute header
-                strip_line = line.strip()
-                if index == lineno:
-                    if not whitespace:
-                        whitespace = self.whitespace_regex.search(line).group(1)
-                    # If object header got finished in this line (existence of `:` at the end of line)
-                    if strip_line.endswith(':'):
-                        tempfile.write(line)
-                        # Preparing the leading whitespace
-                        if '\t' in whitespace:
-                            whitespace += "\t"
-                        else:
-                            whitespace += "    "
-                        # If the object hasn't any doc by itself we write the FULL_RST and make the
-                        # doc_flag True in order to be use in next steps
-                        if doc_length == 0:
-                            tempfile.write(
-                                ''.join([
-                                    whitespace,
-                                    '"""\n',
-                                    '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
-                                    '"""\n']))
-                            doc_flag = True
-
-                        else:
-                            # If object has doc write the FULL_RST and make the doc_flag False
-                            tempfile.write(
-                                ''.join([
-                                    whitespace,
-                                    '"""\n',
-                                    '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
-                                    '"""\n']))
-                            doc_flag = False
-
-                        # clear the previous white space in order to be reconstruct for next objects.
-                        whitespace = None
-                        # making initial True means we have written the documentation
-                        initial = True
-                        try:
-                            # Preserve the documentation and iterate over rst_iterator
-                            pre_doc_lines = doc_lines
-                            lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
-                            rst.write(FULL_RST)
-                        except StopIteration:
-                            pass
-                    elif line.count('(') != line.count(')'):
-                            # If we encounter a line and the line doesn't end with `:` means that header
-                            # has been too long and has been divided to multiple parts.
-                            tempfile.write(line)
-                            lineno += 1
+        rst_iterator = self.create_rst(module, file_name)
+        lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
+        for index, line in enumerate(file_iter, 1):
+            # If we encounter a class, function or attribute header
+            strip_line = line.strip()
+            if index == lineno:
+                # refuse of matching he decorators.
+                if strip_line.startswith('@'):
+                    tempfile.write(line)
+                    lineno += 1
+                    continue
+                if not whitespace:
+                    whitespace = self.whitespace_regex.search(line).group(1)
+                # If object header got finished in this line (existence of `:` at the end of line)
+                if self.check_header(strip_line):
+                    tempfile.write(line)
+                    # Preparing the leading whitespace
+                    if '\t' in whitespace:
+                        whitespace += "\t"
                     else:
-                        tempfile.write(line)
+                        whitespace += "    "
+                    # If the object hasn't any doc by itself we write the FULL_RST and make the
+                    # doc_flag True in order to be use in next steps
+                    if doc_length == 0:
+                        tempfile.write(
+                            ''.join([
+                                whitespace,
+                                '"""\n',
+                                '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
+                                '"""\n']))
+                        doc_flag = True
 
-                # If the index != lineno and initial be True means that we have written the doc and still
-                # we are in object body.
-                elif initial:
-                    stripp_line = line.strip()
-                    # If doc_flag be True means that object hasn't doc so we can write the next lines incautious.
-                    if doc_flag:
+                    else:
+                        # If object has doc write the FULL_RST and make the doc_flag False
+                        tempfile.write(
+                            ''.join([
+                                whitespace,
+                                '"""\n',
+                                '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
+                                '"""\n']))
+                        doc_flag = False
+
+                    # clear the previous white space in order to be reconstruct for next objects.
+                    whitespace = None
+                    # making initial True means we have written the documentation
+                    initial = True
+                    try:
+                        # Preserve the documentation and iterate over rst_iterator
+                        pre_doc_lines = doc_lines
+                        lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
+                    except StopIteration:
+                        pass
+                elif line.count('(') != line.count(')'):
+                        # If we encounter a line and the line doesn't end with `:` means that header
+                        # has been too long and has been divided to multiple parts.
                         tempfile.write(line)
-                        initial = False
-                    # otherwise if the line is a whitespace we write it.
-                    elif not stripp_line:
-                        tempfile.write(line)
-                    # Else if line in not in previous doc lines we we write it
-                    elif stripp_line not in map(str.strip, pre_doc_lines + ['"""']):
-                        tempfile.write(line)
-                # If line is not a the header of an object and initial is not True we just write the line.
+                        lineno += 1
                 else:
                     tempfile.write(line)
+
+            # If the index != lineno and initial be True means that we have written the doc and still
+            # we are in object body.
+            elif initial:
+                # If doc_flag be True means that object hasn't doc so we can write the next lines incautious.
+                if doc_flag:
+                    tempfile.write(line)
+                    initial = False
+                # otherwise if the line is a whitespace we write it.
+                elif not strip_line:
+                    tempfile.write(line)
+                # Else if line in not in previous doc lines we we write it
+                elif strip_line not in map(str.strip, pre_doc_lines + ['"""']):
+                    tempfile.write(line)
+            # If line is not a the header of an object and initial is not True we just write the line.
+            else:
+                tempfile.write(line)
             # Replace the temporary file with target file.
-            shutil.move(tempfile.name, self.file_name)
+        shutil.move(tempfile.name, file_name)
+
+    def check_header(self, line):
+        if '#' in line:
+            line = line.split('#')[0].strip()
+            return line.endswith(':')
+        return line.endswith(':')
+
+
+
+class Manager(Parser):
+    def __init__(self, *args, **kwargs):
+        """
+        .. py:attribute:: __init__()
+
+           :param param_format: A raw frame of parameter line in RST formatting
+           :type param_format: string
+           :param whitespace_regex: A regex for extracting the leading
+            whitespace from code lines
+           :type: regex object
+
+           :rtype: UNKNOWN
+
+        .. note::
+
+        .. todo::
+        """
+        # call the parent's constructor
+        Parser().__init__()
+        # get arguments
+        self.args = kwargs['args']
+        self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
+        self.whitespace_regex = re.compile(r"^(\s*).*")
+
+    def run(self):
+        """
+        .. py:attribute:: run()
+
+            Parse the input arguments and call the `pars()` function on file names
+            based on the input arguments.
+           :rtype: None
+
+        .. note::
+
+        .. todo::
+        """
+        directory_path, file_name = attrgetter('d', 'f')(self.args)
+        if file_name:
+            self.pars(file_name)
+        elif directory_path:
+            for path, dirs, files in os.walk(directory_path):
+                for file_name in files:
+                    self.pars(file_name)
+
+    def pars(self, file_name):
+        """
+        .. py:attribute:: pars()
+
+            Get file content and create parser object and pass it to
+            `replacer()` function.
+
+            :param file_name: file name
+            :type file_name: string
+
+           :rtype: None
+
+        .. note::
+
+        .. todo::
+        """
+        file_iter1, file_iter2 = tee(self.source_reader_filtered(file_name))
+        file_contents = ''.join(file_iter1)
+        module = self.create_parser_obj(file_contents)
+        self.replacer(module, file_name, file_iter2)
 
 
 if __name__ == "__main__":
-    Pars = Parser(file_name='')
-    Pars.replacer()
+    parser = argparse.ArgumentParser(
+        description="Process log files based on your filter")
+    parser.add_argument("-d",
+                        "-directory",
+                        help="Apply the code on all the files and sub-directories within given path")
+    parser.add_argument("-f",
+                        "-file",
+                        help="Apply the code on given file name")
+    args = parser.parse_args()
+    manage = Manager(args=args)
+    manage.run()
