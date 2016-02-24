@@ -3,10 +3,14 @@ import re
 from operator import itemgetter, attrgetter
 from tempfile import NamedTemporaryFile
 from collections import deque
-from itertools import tee, izip_longest
+from itertools import tee, izip_longest, dropwhile, chain
 import shutil
 import argparse
 import os
+
+
+SIGNATURE = """Documentation created using SimpleRST. No kind of right reserved. It's all depends on you.
+               Source: https://github.com/Kasramvd/SimpleRST\n"""
 
 
 class Parser:
@@ -183,8 +187,8 @@ class Parser:
             if type_ == 'function':
                 args = doc['args']
                 with open('temp_function.rst') as fi:
-                    EMPTY_RST = fi.read()
-                FULL_RST = EMPTY_RST.format(**{
+                    empty_rst = fi.read()
+                full_rst = empty_rst.format(**{
                     'args': args,
                     'name': name,
                     'lineno': lineno,
@@ -198,8 +202,8 @@ class Parser:
                     'todo': ''})
             elif type_ == 'class':
                 with open('temp_class.rst') as fi:
-                    EMPTY_RST = fi.read()
-                FULL_RST = EMPTY_RST.format(**{
+                    empty_rst = fi.read()
+                full_rst = empty_rst.format(**{
                     'name': name,
                     'lineno': lineno,
                     'type': type_,
@@ -213,8 +217,8 @@ class Parser:
                     'todo': ''})
             elif type_ == 'attribute':
                 with open('attribute.rst') as fi:
-                    EMPTY_RST = fi.read()
-                FULL_RST = EMPTY_RST.format(**{
+                    empty_rst = fi.read()
+                full_rst = empty_rst.format(**{
                     'name': name,
                     'lineno': lineno,
                     'type': type_,
@@ -226,7 +230,7 @@ class Parser:
                     'note': '',
                     'example': '',
                     'todo': ''})
-            yield lineno + 1, FULL_RST, doc_length, doc_lines
+            yield lineno + 1, full_rst, doc_length, doc_lines
 
     def replacer(self, module, file_name, file_iter, doc_flag=False, initial=False, whitespace=None):
         """
@@ -243,10 +247,13 @@ class Parser:
 
         .. todo::
         """
+        offset, module_doc, file_iter = self.extract_module_doc(file_iter)
+        module_doc = self.module_doc_to_rst(module_doc, file_name)
         tempfile = NamedTemporaryFile(delete=False)
+        tempfile.write(module_doc)
         rst_iterator = self.create_rst(module, file_name)
-        lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
-        for index, line in enumerate(file_iter, 1):
+        lineno, full_rst, doc_length, doc_lines = next(rst_iterator)
+        for index, line in enumerate(file_iter, 1 + offset):
             # If we encounter a class, function or attribute header
             strip_line = line.strip()
             if index == lineno:
@@ -265,24 +272,26 @@ class Parser:
                         whitespace += "\t"
                     else:
                         whitespace += "    "
-                    # If the object hasn't any doc by itself we write the FULL_RST and make the
+                    # If the object hasn't any doc by itself we write the full_rst and make the
                     # doc_flag True in order to be use in next steps
                     if doc_length == 0:
                         tempfile.write(
                             ''.join([
                                 whitespace,
                                 '"""\n',
-                                '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
+                                '\n'.join([whitespace + l.rstrip() if l.strip() else l for l in full_rst.split('\n')]),
+                                whitespace,
                                 '"""\n']))
                         doc_flag = True
 
                     else:
-                        # If object has doc write the FULL_RST and make the doc_flag False
+                        # If object has doc write the full_rst and make the doc_flag False
                         tempfile.write(
                             ''.join([
                                 whitespace,
                                 '"""\n',
-                                '\n'.join([whitespace + l for l in FULL_RST.split('\n')]),
+                                '\n'.join([whitespace + l.rstrip() if l.strip() else l for l in full_rst.split('\n')]),
+                                whitespace,
                                 '"""\n']))
                         doc_flag = False
 
@@ -293,7 +302,7 @@ class Parser:
                     try:
                         # Preserve the documentation and iterate over rst_iterator
                         pre_doc_lines = doc_lines
-                        lineno, FULL_RST, doc_length, doc_lines = next(rst_iterator)
+                        lineno, full_rst, doc_length, doc_lines = next(rst_iterator)
                     except StopIteration:
                         pass
                 elif line.count('(') != line.count(')'):
@@ -329,6 +338,30 @@ class Parser:
             return line.endswith(':')
         return line.endswith(':')
 
+    def extract_module_doc(self, iterable):
+        refined_iter = dropwhile(lambda x: not x.strip(), iterable)
+        shebang_lines = []
+        doc_lines = []
+        for line in refined_iter:
+            strip_line = line.strip()
+            if strip_line.startswith(('from', 'import')):
+                return (len(doc_lines) + len(shebang_lines),
+                        doc_lines,
+                        chain(shebang_lines + [line], refined_iter))
+            elif strip_line.startswith('#'):
+                shebang_lines.append(line)
+            else:
+                doc_lines.append(line)
+
+    def module_doc_to_rst(self, module_doc, file_name):
+        module_doc = ''.join(module_doc).replace('"""', '')
+        with open('module.rst') as fi:
+            empty_rst = fi.read()
+        full_rst = empty_rst.format(**{
+            'file_name': file_name,
+            'explanation': module_doc,
+            'signature': SIGNATURE})
+        return '"""\n' + full_rst + '"""\n\n'
 
 
 class Manager(Parser):
