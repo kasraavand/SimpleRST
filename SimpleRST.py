@@ -6,6 +6,7 @@ from collections import deque
 from itertools import tee, izip_longest, dropwhile, chain
 import shutil
 import argparse
+import fnmatch
 import os
 
 
@@ -256,6 +257,9 @@ class Parser:
         for index, line in enumerate(file_iter, 1 + offset):
             # If we encounter a class, function or attribute header
             strip_line = line.strip()
+            new_strip = strip_line.strip('"')
+            if new_strip:
+                strip_line = new_strip
             if index == lineno:
                 # refuse of matching he decorators.
                 if strip_line.startswith('@'):
@@ -342,14 +346,17 @@ class Parser:
         refined_iter = dropwhile(lambda x: not x.strip(), iterable)
         shebang_lines = []
         doc_lines = []
+        counter = 0
         for line in refined_iter:
             strip_line = line.strip()
-            if strip_line.startswith(('from', 'import')):
+            if strip_line.startswith('#'):
+                shebang_lines.append(line)
+            elif strip_line.startswith('"""'):
+                counter += 1
+            elif counter % 2 == 0:
                 return (len(doc_lines) + len(shebang_lines),
                         doc_lines,
                         chain(shebang_lines + [line], refined_iter))
-            elif strip_line.startswith('#'):
-                shebang_lines.append(line)
             else:
                 doc_lines.append(line)
 
@@ -403,10 +410,13 @@ class Manager(Parser):
         directory_path, file_name = attrgetter('d', 'f')(self.args)
         if file_name:
             self.pars(file_name)
+            print 'File " {} " gets documented'.format(os.path.basename(file_name))
         elif directory_path:
             for path, dirs, files in os.walk(directory_path):
-                for file_name in files:
-                    self.pars(file_name)
+                for file_name in fnmatch.filter(files, '*.py'):
+                    print "Start documenting of {}...".format(file_name)
+                    self.pars('{}/{}'.format(path, file_name))
+                    print 'File " {} " gets documented'.format(file_name)
 
     def pars(self, file_name):
         """
