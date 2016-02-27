@@ -2,7 +2,7 @@ import ast
 import re
 from operator import itemgetter, attrgetter
 from tempfile import NamedTemporaryFile
-from collections import deque
+from collections import deque, Iterable
 from itertools import tee, izip_longest, dropwhile, chain
 import shutil
 import argparse
@@ -36,8 +36,14 @@ class Parser:
             Constructor of Parser objects
            :rtype: None
         """
+        self.file_name = None
+        self.next_iter = self.parser_iter = self.main_iter = self.file_contents = None
 
-    def source_reader_filtered(self, file_name):
+    def pars(self):
+        module = self.create_parser_obj(self.file_contents)
+        self.replacer(module)
+
+    def source_reader_filtered(self):
         """
         .. py:attribute:: source_reader_filtered()
 
@@ -45,17 +51,15 @@ class Parser:
            :rtype: string
 
         """
-        with open(file_name) as f:
-            stack = deque()
-            ne, f = tee(f)
-            next(ne)
-            for line, next_line in izip_longest(f, ne):
-                line = line.rstrip()
-                if line.endswith('\\'):
-                    stack.append(line.strip('\\'))
-                else:
-                    yield ''.join(stack) + line + '\n'
-                    stack.clear()
+        stack = deque()
+        next(self.next_iter)
+        for line, next_line in izip_longest(self.parser_iter, self.next_iter):
+            line = line.rstrip()
+            if line.endswith('\\'):
+                stack.append(line.strip('\\'))
+            else:
+                yield ''.join(stack) + line + '\n'
+                stack.clear()
 
     def create_parser_obj(self, file_contents):
         """
@@ -91,13 +95,21 @@ class Parser:
                         "docstring": ast.get_docstring(node),
                         "type": 'class'}
                     for sub_node in node.body:
+                        args_ = []
                         if isinstance(sub_node, ast.FunctionDef):
+                            for arg in sub_node.args.args:
+                                if arg.id != 'self':
+                                    if isinstance(arg, Iterable):
+                                        args_ += [item.id for item in args]
+                                    else:
+                                        args_.append(arg.id)
+
                             yield {
                                 "name": sub_node.name,
                                 "lineno": sub_node.lineno - 1,
                                 "docstring": ast.get_docstring(sub_node),
                                 "type": 'attribute',
-                                "args": [arg.id for arg in sub_node.args.args if arg.id != 'self'],
+                                "args": args,
                                 "header": ''}
                             for n in extracter(sub_node):
                                 yield n
@@ -162,7 +174,7 @@ class Parser:
                 parsed_docstring['doc_length'] = 0
                 yield [], parsed_docstring
 
-    def create_rst(self, module, file_name):
+    def create_rst(self, module):
         """
         .. py:attribute:: create_rst()
 
@@ -196,7 +208,7 @@ class Parser:
                     'type': type_,
                     'explain': explain,
                     'params': params,
-                    'file_name': file_name,
+                    'self.file_name': self.file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
@@ -211,7 +223,7 @@ class Parser:
                     'explain': explain,
                     'params': params,
                     'args': '',
-                    'file_name': file_name,
+                    'self.file_name': self.file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
@@ -226,14 +238,14 @@ class Parser:
                     'explain': explain,
                     'params': params,
                     'args': '',
-                    'file_name': file_name,
+                    'self.file_name': self.file_name,
                     'return': 'UNKNOWN',
                     'note': '',
                     'example': '',
                     'todo': ''})
             yield lineno + 1, full_rst, doc_length, doc_lines
 
-    def replacer(self, module, file_name, file_iter, doc_flag=False, initial=False, whitespace=None):
+    def replacer(self, module, doc_flag=False, initial=False, whitespace=None):
         """
         .. py:attribute:: replacer()
             Replace the existing document (if it exist) or adding new document (if it hasn't doc)
@@ -248,13 +260,13 @@ class Parser:
 
         .. todo::
         """
-        offset, module_doc, file_iter = self.extract_module_doc(file_iter)
-        module_doc = self.module_doc_to_rst(module_doc, file_name)
+        offset, module_doc, refined_iter = self.extract_module_doc()
+        module_doc = self.module_doc_to_rst(module_doc)
         tempfile = NamedTemporaryFile(delete=False)
         tempfile.write(module_doc)
-        rst_iterator = self.create_rst(module, file_name)
+        rst_iterator = self.create_rst(module)
         lineno, full_rst, doc_length, doc_lines = next(rst_iterator)
-        for index, line in enumerate(file_iter, 1 + offset):
+        for index, line in enumerate(refined_iter, 1 + offset):
             # If we encounter a class, function or attribute header
             strip_line = line.strip()
             new_strip = strip_line.strip('"')
@@ -334,7 +346,7 @@ class Parser:
             else:
                 tempfile.write(line)
             # Replace the temporary file with target file.
-        shutil.move(tempfile.name, file_name)
+        shutil.move(tempfile.name, self.file_name)
 
     def check_header(self, line):
         if '#' in line:
@@ -342,30 +354,29 @@ class Parser:
             return line.endswith(':')
         return line.endswith(':')
 
-    def extract_module_doc(self, iterable):
-        refined_iter = dropwhile(lambda x: not x.strip(), iterable)
+    def extract_module_doc(self):
         shebang_lines = []
         doc_lines = []
         counter = 0
-        for line in refined_iter:
+        for line in self.main_iter:
             strip_line = line.strip()
             if strip_line.startswith('#'):
                 shebang_lines.append(line)
             elif strip_line.startswith('"""'):
                 counter += 1
             elif counter % 2 == 0:
-                return (len(doc_lines) + len(shebang_lines),
+                return (len(doc_lines) + len(shebang_lines) + counter,
                         doc_lines,
-                        chain(shebang_lines + [line], refined_iter))
+                        chain(shebang_lines + [line], self.main_iter))
             else:
                 doc_lines.append(line)
 
-    def module_doc_to_rst(self, module_doc, file_name):
+    def module_doc_to_rst(self, module_doc):
         module_doc = ''.join(module_doc).replace('"""', '')
         with open('module.rst') as fi:
             empty_rst = fi.read()
         full_rst = empty_rst.format(**{
-            'file_name': file_name,
+            'file_name': self.file_name,
             'explanation': module_doc,
             'signature': SIGNATURE})
         return '"""\n' + full_rst + '"""\n\n'
@@ -392,8 +403,48 @@ class Manager(Parser):
         Parser().__init__()
         # get arguments
         self.args = kwargs['args']
-        self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
+        self.directory_path, self.file_name = self.get_args()
         self.whitespace_regex = re.compile(r"^(\s*).*")
+        self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
+
+    def set_file_iters(self, file_name):
+        (self.next_iter,
+         self.parser_iter,
+         self.main_iter,
+         self.file_contents) = self.create_refined_fileobj(file_name)
+
+    def create_refined_fileobj(self, file_name):
+            f = open(file_name)
+            refined_iter = dropwhile(lambda x: not x.strip(), f)
+            self.next_iter, self.parser_iter, self.main_iter, self.file_contents = tee(refined_iter, 4)
+            self.file_contents = ''.join(self.file_contents)
+            return (self.next_iter,
+                    self.parser_iter,
+                    self.main_iter,
+                    self.file_contents)
+
+    def get_args(self):
+        return attrgetter('d', 'f')(self.args)
+
+    @property
+    def _file_name(self):
+        return (self.file_name,
+                self.next_iter,
+                self.parser_iter,
+                self.main_iter,
+                self.file_contents)
+
+    @_file_name.setter
+    def _file_name(self):
+        (self.file_name,
+         self.next_iter,
+         self.parser_iter,
+         self.main_iter,
+         self.file_contents) = (self.file_name,
+                                self.next_iter,
+                                self.parser_iter,
+                                self.main_iter,
+                                self.file_contents)
 
     def run(self):
         """
@@ -407,37 +458,22 @@ class Manager(Parser):
 
         .. todo::
         """
-        directory_path, file_name = attrgetter('d', 'f')(self.args)
-        if file_name:
-            self.pars(file_name)
-            print 'File " {} " gets documented'.format(os.path.basename(file_name))
-        elif directory_path:
-            for path, dirs, files in os.walk(directory_path):
+        if self.file_name:
+            self.pars()
+            print 'File " {} " gets documented'.format(os.path.basename(self.file_name))
+        elif self.directory_path:
+            for path, dirs, files in os.walk(self.directory_path):
                 for file_name in fnmatch.filter(files, '*.py'):
-                    print "Start documenting of {}...".format(file_name)
-                    self.pars('{}/{}'.format(path, file_name))
-                    print 'File " {} " gets documented'.format(file_name)
-
-    def pars(self, file_name):
-        """
-        .. py:attribute:: pars()
-
-            Get file content and create parser object and pass it to
-            `replacer()` function.
-
-            :param file_name: file name
-            :type file_name: string
-
-           :rtype: None
-
-        .. note::
-
-        .. todo::
-        """
-        file_iter1, file_iter2 = tee(self.source_reader_filtered(file_name))
-        file_contents = ''.join(file_iter1)
-        module = self.create_parser_obj(file_contents)
-        self.replacer(module, file_name, file_iter2)
+                    self.file_name = '{}/{}'.format(path, file_name)
+                    print "Start documenting of {}...".format(self.file_name)
+                    try:
+                        self.set_file_iters(self.file_name)
+                        self.pars()
+                    except (StopIteration, TypeError):
+                        print "#" * (len(self.file_name) + 23)
+                        print "# File {} gots escaped. #".format(self.file_name)
+                        print "#" * (len(self.file_name) + 23)
+                    print 'File " {} " gets documented'.format(self.file_name)
 
 
 if __name__ == "__main__":
