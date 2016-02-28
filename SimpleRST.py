@@ -43,6 +43,16 @@ class Parser:
         module = self.create_parser_obj(self.file_contents)
         self.replacer(module)
 
+    def create_refined_fileobj(self):
+        f = open(self.file_name)
+        refined_iter = dropwhile(lambda x: not x.strip(), f)
+        self.next_iter, self.parser_iter, self.main_iter, self.file_contents = tee(refined_iter, 4)
+        self.file_contents = ''.join(self.file_contents)
+        return (self.next_iter,
+                self.parser_iter,
+                self.main_iter,
+                self.file_contents)
+
     def source_reader_filtered(self):
         """
         .. py:attribute:: source_reader_filtered()
@@ -98,28 +108,33 @@ class Parser:
                         args_ = []
                         if isinstance(sub_node, ast.FunctionDef):
                             for arg in sub_node.args.args:
-                                if arg.id != 'self':
-                                    if isinstance(arg, Iterable):
-                                        args_ += [item.id for item in args]
-                                    else:
+                                    try:
                                         args_.append(arg.id)
+                                    except AttributeError:
+                                        args_.extend([item.id for item in arg.elts if item.id != 'self'])
 
                             yield {
                                 "name": sub_node.name,
                                 "lineno": sub_node.lineno - 1,
                                 "docstring": ast.get_docstring(sub_node),
                                 "type": 'attribute',
-                                "args": args,
+                                "args": args_,
                                 "header": ''}
                             for n in extracter(sub_node):
                                 yield n
                 elif isinstance(node, ast.FunctionDef):
+                    args_ = []
+                    for arg in node.args.args:
+                        try:
+                            args_.append(arg.id)
+                        except AttributeError:
+                            args_.extend([item.id for item in arg])
                     yield {
                         "name": node.name,
                         "lineno": node.lineno - 1,
                         "docstring": ast.get_docstring(node),
                         "type": 'function',
-                        "args": [arg.id for arg in node.args.args]}
+                        "args": args_}
                     for n in extracter(node):
                         yield n
         return extracter(module)
@@ -269,7 +284,7 @@ class Parser:
         for index, line in enumerate(refined_iter, 1 + offset):
             # If we encounter a class, function or attribute header
             strip_line = line.strip()
-            new_strip = strip_line.strip('"')
+            new_strip = strip_line.replace('"""', '')
             if new_strip:
                 strip_line = new_strip
             if index == lineno:
@@ -365,7 +380,7 @@ class Parser:
             elif strip_line.startswith('"""'):
                 counter += 1
             elif counter % 2 == 0:
-                return (len(doc_lines) + len(shebang_lines) + counter,
+                return (len(doc_lines) + counter,
                         doc_lines,
                         chain(shebang_lines + [line], self.main_iter))
             else:
@@ -407,44 +422,16 @@ class Manager(Parser):
         self.whitespace_regex = re.compile(r"^(\s*).*")
         self.param_format = """   :param {name}: {describe}\n   :type {name}: {types}"""
 
-    def set_file_iters(self, file_name):
-        (self.next_iter,
-         self.parser_iter,
-         self.main_iter,
-         self.file_contents) = self.create_refined_fileobj(file_name)
-
-    def create_refined_fileobj(self, file_name):
-            f = open(file_name)
-            refined_iter = dropwhile(lambda x: not x.strip(), f)
-            self.next_iter, self.parser_iter, self.main_iter, self.file_contents = tee(refined_iter, 4)
-            self.file_contents = ''.join(self.file_contents)
-            return (self.next_iter,
-                    self.parser_iter,
-                    self.main_iter,
-                    self.file_contents)
-
     def get_args(self):
         return attrgetter('d', 'f')(self.args)
 
     @property
     def _file_name(self):
-        return (self.file_name,
-                self.next_iter,
-                self.parser_iter,
-                self.main_iter,
-                self.file_contents)
+        return self.file_name
 
     @_file_name.setter
     def _file_name(self):
-        (self.file_name,
-         self.next_iter,
-         self.parser_iter,
-         self.main_iter,
-         self.file_contents) = (self.file_name,
-                                self.next_iter,
-                                self.parser_iter,
-                                self.main_iter,
-                                self.file_contents)
+        self.file_name = self.file_name
 
     def run(self):
         """
@@ -459,21 +446,20 @@ class Manager(Parser):
         .. todo::
         """
         if self.file_name:
+            self.create_refined_fileobj()
             self.pars()
             print 'File " {} " gets documented'.format(os.path.basename(self.file_name))
         elif self.directory_path:
             for path, dirs, files in os.walk(self.directory_path):
                 for file_name in fnmatch.filter(files, '*.py'):
                     self.file_name = '{}/{}'.format(path, file_name)
-                    print "Start documenting of {}...".format(self.file_name)
                     try:
-                        self.set_file_iters(self.file_name)
+                        self.create_refined_fileobj()
                         self.pars()
-                    except (StopIteration, TypeError):
-                        print "#" * (len(self.file_name) + 23)
-                        print "# File {} gots escaped. #".format(self.file_name)
-                        print "#" * (len(self.file_name) + 23)
-                    print 'File " {} " gets documented'.format(self.file_name)
+                    except (StopIteration, TypeError, IndentationError, SyntaxError) as e:
+                        print "*** File {} gets escaped. ***\n*** {} ***".format(self.file_name, e)
+                    else:
+                        print 'File " {} " gets documented'.format(self.file_name)
 
 
 if __name__ == "__main__":
