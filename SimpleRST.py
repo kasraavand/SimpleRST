@@ -2,7 +2,7 @@ import ast
 import re
 from operator import itemgetter, attrgetter
 from tempfile import NamedTemporaryFile
-from collections import deque, Iterable
+from collections import deque
 from itertools import tee, izip_longest, dropwhile, chain
 import shutil
 import argparse
@@ -391,7 +391,7 @@ class Parser:
         with open('module.rst') as fi:
             empty_rst = fi.read()
         full_rst = empty_rst.format(**{
-            'file_name': self.file_name,
+            'file_name': os.path.basename(self.file_name),
             'explanation': module_doc,
             'signature': SIGNATURE})
         return '"""\n' + full_rst + '"""\n\n'
