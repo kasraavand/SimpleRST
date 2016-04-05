@@ -169,25 +169,43 @@ class Parser:
                 elif not indices[0] == 0:
                     indices = [0] + indices
                 parts_ = ['\n'.join(doc_lines[i:j]) for i, j in zip(indices, indices[1:] + [None])]
+                match_arg_flag = True
                 for part in parts_:
                     match_obj = regex.match(part)
                     if match_obj:
+                        match_arg_flag = False
                         name, types, describe = match_obj.group(1, 2, 3)
                         parsed_docstring["arguments"].append(
                             {'name': name, 'types': types, 'describe': describe})
                     else:
                         parsed_docstring["explain"] += '\n' + part
+                        if match_arg_flag:
+                            try:
+                                parsed_docstring['arguments'] = self.simple_arg_extracter(parsed_docstring['type'],
+                                                                                          parsed_docstring['args'])
+                            except KeyError:
+                                # Should be handle
+                                pass
                 yield doc_lines, parsed_docstring
             else:
                 parsed_docstring['explain'] = ''
-                if parsed_docstring['type'] in {'function', 'attribute'}:
-                    parsed_docstring['arguments'] = [{'name': i,
-                                                      'types': '',
-                                                      'describe': ''} for i in parsed_docstring['args']]
-                else:
-                    parsed_docstring['arguments'] = [{'name': '', 'types': '', 'describe': ''}]
+                try:
+                    parsed_docstring['arguments'] = self.simple_arg_extracter(parsed_docstring['type'],
+                                                                              parsed_docstring['args'])
+                except KeyError:
+                    # Should be handle
+                    pass
                 parsed_docstring['doc_length'] = 0
                 yield [], parsed_docstring
+
+    def simple_arg_extracter(self, obj_type, args):
+
+        if obj_type in {'function', 'attribute'}:
+            return [{'name': i,
+                     'types': '',
+                     'describe': ''} for i in args if i != 'self']
+        else:
+            return [{'name': '', 'types': '', 'describe': ''}]
 
     def create_rst(self, module):
         """
@@ -347,7 +365,7 @@ class Parser:
             # If the index != lineno and initial be True means that we have written the doc and still
             # we are in object body.
             elif initial:
-                # If doc_flag be True means that object hasn't doc so we can write the next lines incautious.
+                # If doc_flag is True means that object doesn't get documented, so we can write the next lines incautiously.
                 if doc_flag:
                     tempfile.write(line)
                     initial = False
