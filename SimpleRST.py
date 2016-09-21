@@ -10,8 +10,7 @@ import fnmatch
 import os
 
 
-SIGNATURE = """Documentation created using SimpleRST. No kind of right reserved. It's all depends on you.
-               Source: https://github.com/Kasramvd/SimpleRST\n"""
+SIGNATURE = """Documentation created using SimpleRST. Source: https://github.com/Kasramvd/SimpleRST\n"""
 
 
 class Parser:
