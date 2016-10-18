@@ -1,24 +1,21 @@
 
-
+import argparse
 import ast
+import glob
+from os import path as ospath, mkdir
 
 
 class Parser(object):
 
     def __init__(self, *args, **kwargs):
-        self.file_name = kwargs['file_name']
-        self.file_contents = self.source_reader()
-        self.module = self.create_parser_obj()
+        self.input_path = kwargs['input_path']
+        self.output_path = kwargs['output_path']
+        self.projct_name = kwargs['projct_name']
+        if not ospath.isdir(self.output_path):
+            mkdir(self.output_path)
 
-    def source_reader(self):
-        with open(self.file_name) as fd:
-            return fd.read()
-
-    def create_parser_obj(self):
-        return ast.parse(self.file_contents)
-
-    def get_doc(self):
-        for node in self.module.body:
+    def get_doc(self, module):
+        for node in module.body:
             if isinstance(node, ast.ClassDef):
                 yield ast.get_docstring(node)
                 for sub_node in node.body:
@@ -26,13 +23,53 @@ class Parser(object):
                         yield ast.get_docstring(sub_node)
 
     def rst_creator(self):
-        name = self.file_name.rsplit('/', 1)[-1].split('.')[0]
-        with open('{}.rst'.format(name), 'w') as f:
-            for doc in self.get_doc():
-                if doc:
-                    doc = unicode(doc,'unicode-escape').replace(u'”', '`').replace(u'“', '`')
-                    f.write(doc + '\n')
+        if self.input_path.endswith(".py"):
+            with open(input_path) as f:
+                self.generate_rst(f, input_path, True)
+        else:
+            for name in glob.glob(input_path + "/**/*.py", recursive=True):
+                print(name)
+                with open(name) as f:
+                    self.generate_rst(f, name)
+
+    def generate_rst(self, inp, name, one_file=False):
+        if one_file:
+            path = name
+        else:
+            name = name.split('/' + self.projct_name + '/')[-1].strip('/')
+            print(name)
+            if '/' in name:
+                dir_path = ospath.join(self.output_path, ospath.dirname(name))
+            else:
+                dir_path = ospath.join(self.output_path, name)
+            try:
+                mkdir(dir_path)
+            except:
+                pass
+            file_path = name.split('.')[0]
+            path = ospath.join(self.output_path, file_path)
+        with open('{}.rst'.format(path), 'w') as outp:
+            for doc in self.get_doc(ast.parse(inp.read())):
+                if doc and not doc.strip().startswith("@"):
+                    outp.write(doc + '\n')
 
 if __name__ == '__main__':
-    PS = Parser(file_name='')
+    parser = argparse.ArgumentParser(
+        description="""Extract RST documentations from files.
+        """)
+    parser.add_argument("-i",
+                        "-input",
+                        help="The input directory.")
+    parser.add_argument("-o",
+                        "-output",
+                        help="The output directory.")
+    parser.add_argument("-p",
+                        "-projct_name",
+                        help="The name of base directory for project.")
+    args = parser.parse_args()
+
+    input_path, output_path, projct_name = args.i, args.o, args.p
+    PS = Parser(input_path=input_path,
+                output_path=output_path,
+                projct_name=projct_name)
     PS.rst_creator()

@@ -158,7 +158,7 @@ class Parser:
             doc = parsed_docstring.pop('docstring')
             parsed_docstring["arguments"] = []
             parsed_docstring["explain"] = ''
-            if doc:
+            if doc and not doc.strip().startswith("@"):
                 doc_lines = doc.split('\n')
                 doc_length = len(doc_lines)
                 parsed_docstring["doc_length"] = doc_length
