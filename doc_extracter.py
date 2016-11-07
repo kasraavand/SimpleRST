@@ -2,7 +2,8 @@
 import argparse
 import ast
 import glob
-from os import path as ospath, mkdir
+from os import path as ospath, mkdir, walk
+from itertools import chain
 
 
 class Parser(object):
@@ -27,31 +28,22 @@ class Parser(object):
             with open(input_path) as f:
                 self.generate_rst(f, input_path, True)
         else:
-            for name in glob.glob(input_path + "/**/*.py", recursive=True):
-                print(name)
-                with open(name) as f:
-                    self.generate_rst(f, name)
+            for dirpath, dirnames, filenames in walk(input_path):
+                for dirname in dirnames:
+                    doc = chain.form_iterable(self.generate_rst(ospath.join(input_path, dirname)))
+                    with open(dirname, 'w') as f:
+                        f.write("\n".join(doc))
 
-    def generate_rst(self, inp, name, one_file=False):
-        if one_file:
-            path = name
-        else:
-            name = name.split('/' + self.projct_name + '/')[-1].strip('/')
-            print(name)
-            if '/' in name:
-                dir_path = ospath.join(self.output_path, ospath.dirname(name))
-            else:
-                dir_path = ospath.join(self.output_path, name)
-            try:
-                mkdir(dir_path)
-            except:
-                pass
-            file_path = name.split('.')[0]
-            path = ospath.join(self.output_path, file_path)
-        with open('{}.rst'.format(path), 'w') as outp:
-            for doc in self.get_doc(ast.parse(inp.read())):
-                if doc and not doc.strip().startswith("@"):
-                    outp.write(doc + '\n')
+    def generate_rst(self, path):
+        for name in glob.glob(path + "/**/*.py",
+                              recursive=True):
+            with open(name) as f:
+                yield self.create_rst(f, name)
+
+    def create_rst(self, inp, name, one_file=False):
+        for doc in self.get_doc(ast.parse(inp.read())):
+            if doc and not doc.strip().startswith("@"):
+                yield doc
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
