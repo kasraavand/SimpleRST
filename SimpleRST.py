@@ -43,6 +43,7 @@ class Parser:
         self.replacer(module)
 
     def create_refined_fileobj(self):
+        # This file object shouldn't be closed as it's gonna be used in other functions!!!
         f = open(self.file_name)
         refined_iter = dropwhile(lambda x: not x.strip(), f)
         self.next_iter, self.parser_iter, self.main_iter, self.file_contents = tee(refined_iter, 4)
